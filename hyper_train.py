@@ -1,14 +1,10 @@
 import numpy as np
-import sys
-import matplotlib.pyplot as plt
-from sklearn.externals import joblib
-from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV 
+from sklearn.model_selection import train_test_split, GridSearchCV
 
 # Configure file paths
-DATA='model/data_600.npy'
-LABEL='model/label_600.npy'
+DATA='model/data_6class.npy'
+LABEL='model/label_6class.npy'
 
 # Load data and labels
 data=np.load(DATA)

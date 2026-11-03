@@ -1,15 +1,14 @@
 import numpy as np
 import sys
-import matplotlib.pyplot as plt
-from sklearn.externals import joblib
+import joblib
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split, cross_val_score 
 
 # Configure file paths
-MODEL=sys.argv[1]
-DATA='model/data_600.npy'
-LABEL='model/label_600.npy'
+MODEL=sys.argv[1] if len(sys.argv) > 1 else "model/rfclassifier_6class.sav"
+DATA='model/data_6class.npy'
+LABEL='model/label_6class.npy'
 
 # Load data and labels
 data=np.load(DATA)
@@ -48,5 +47,5 @@ print("\nAccuracy: %0.2f (+/- %0.2f)" % (scores.mean(), scores.std() * 2))
 joblib.dump(clf, MODEL)
 
 '''
-Sample run: python train.py model/rfclassifier_600.sav
+Sample run: python train.py model/rfclassifier_6class.sav
 '''

@@ -1,18 +1,18 @@
 import numpy as np
 import cv2
 import mahotas
-import os
 import sys
 import pickle
 from pathlib import Path
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 
 # Setup filepath and parameters
-IMDIR=sys.argv[1]
-BOVW="model/bovw_codebook_600.pickle"
+IMDIR=sys.argv[1] if len(sys.argv) > 1 else "data_filtered"
+BOVW="model/bovw_codebook_6class.pickle"
 DICT_SIZE=600
-DATA='model/data_600.npy'
-LABEL='model/label_600.npy'
+DATA='model/data_6class.npy'
+LABEL='model/label_6class.npy'
+SCALER='model/feature_scaler_6class.joblib'
 
 # Hu Moments
 def fd_hu_moments(image):
@@ -39,17 +39,23 @@ def fd_histogram(image):
 # Sift Bag of Visual Words
 def feature_extract(im):
     gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-    feature = bowDiction.compute(gray, sift.detect(gray))
-    return feature.squeeze()
+    _, descriptors = sift.detectAndCompute(gray, None)
+    if descriptors is None:
+        return np.zeros(DICT_SIZE, dtype=np.float32)
+    matches = cv2.BFMatcher(cv2.NORM_L2).match(descriptors, dictionary)
+    histogram = np.bincount(
+        [match.trainIdx for match in matches], minlength=DICT_SIZE
+    )
+    return histogram.astype(np.float32) / max(len(descriptors), 1)
 
 # Directory containing images
 base= Path(IMDIR).resolve()
 print(base)
 
 # Initialize SIFT and BOW trainer
-sift = cv2.xfeatures2d.SIFT_create()
+sift = cv2.SIFT_create()
 dictionarySize = DICT_SIZE
-BOW = cv2.BOWKMeansTrainer(dictionarySize)
+descriptors = []
 
 # Generate the vocabulary for BOVW
 for file in base.glob('**/*.*'):
@@ -57,13 +63,26 @@ for file in base.glob('**/*.*'):
     print(str(fpath))
     image = cv2.imread(str(fpath))
     print(fpath.parent.name)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGRA2GRAY)
-    kp, dsc= sift.detectAndCompute(gray, None)
-    BOW.add(dsc)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    kp, dsc = sift.detectAndCompute(gray, None)
+    if dsc is not None:
+        descriptors.append(dsc)
 
 # Cluster the visual vocabulary and generate codebook
 print("Clustering...")
-dictionary = BOW.cluster()
+if not descriptors:
+    raise RuntimeError("No SIFT descriptors found in the dataset.")
+all_descriptors = np.vstack(descriptors).astype(np.float32)
+max_descriptors = 20_000
+if len(all_descriptors) > max_descriptors:
+    rng = np.random.default_rng(42)
+    selected = rng.choice(len(all_descriptors), max_descriptors, replace=False)
+    all_descriptors = all_descriptors[selected]
+print("Descriptors used for clustering:", len(all_descriptors))
+criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.1)
+_, _, dictionary = cv2.kmeans(
+    all_descriptors, dictionarySize, None, criteria, 3, cv2.KMEANS_PP_CENTERS
+)
 print((dictionary.shape))
 
 # Save the codebook with pickle (for later use)
@@ -77,9 +96,7 @@ pickle_in = open(BOVW,"rb")
 dictionary = pickle.load(pickle_in)
 
 # Initialize SIFT BOW image descriptor extractor
-sift2 = cv2.xfeatures2d.SIFT_create()
-bowDiction = cv2.BOWImgDescriptorExtractor(sift2, cv2.BFMatcher(cv2.NORM_L2))
-bowDiction.setVocabulary(dictionary)
+sift = cv2.SIFT_create()
 
 print("Feature Extraction...")
 
@@ -109,9 +126,12 @@ x_data = scaler.fit_transform(x_data)
 encoder  = LabelEncoder()
 x_label  = encoder.fit_transform(x_label)
 
-# Save the data and labels
+# Save the data, labels, and the fitted scaler. Inference must use the same
+# feature ranges as training.
 np.save(DATA,np.array(x_data))
 np.save(LABEL,np.array(x_label))
+import joblib
+joblib.dump(scaler, SCALER)
 
 '''
 Sample run: python bovw.py data

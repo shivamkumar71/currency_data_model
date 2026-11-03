@@ -1,13 +1,13 @@
 import numpy as np
-import cv2, mahotas, imutils
-import os, sys
+import cv2, mahotas
+import sys
 import math, pickle
-from sklearn.externals import joblib
+import joblib
 
 # Configure file paths
 IMAGE=sys.argv[1]
-MODEL='model/rfclassifier_600.sav'
-BOVW="model/bovw_codebook_600.pickle"
+MODEL='model/rfclassifier_6class.sav'
+BOVW="model/bovw_codebook_6class.pickle"
 
 # Hu Moments
 def fd_hu_moments(image):
@@ -32,11 +32,16 @@ def fd_histogram(image):
 
 # SIFT Bag of Visual Words
 def feature_extract(im):
-    
     gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-    sift = cv2.xfeatures2d.SIFT_create()
-    feature = bowDiction.compute(gray, sift.detect(gray))
-    return feature.squeeze()
+    sift = cv2.SIFT_create()
+    _, descriptors = sift.detectAndCompute(gray, None)
+    if descriptors is None:
+        return np.zeros(dictionary.shape[0], dtype=np.float32)
+    matches = cv2.BFMatcher(cv2.NORM_L2).match(descriptors, dictionary)
+    histogram = np.bincount(
+        [match.trainIdx for match in matches], minlength=dictionary.shape[0]
+    )
+    return histogram.astype(np.float32) / max(len(descriptors), 1)
 
 
 def rotate_bound(image,point,angle):
@@ -99,18 +104,14 @@ def crop_image(rect, src):
 loaded_model = joblib.load(MODEL)
 
 # Class-label dictionary and colours
-label= {0:"10", 1:"20", 2:"50", 3:"100", 4:"200", 5:"500" , 6:"2000"}
-colours=[(0, 63, 123),(47, 255, 173),(238, 244, 21),(220, 126, 181),(29, 170, 255),(133, 142, 146),(255,0, 255)]
+label= {0:"10", 1:"20", 2:"50", 3:"100", 4:"200", 5:"500"}
+colours=[(0, 63, 123),(47, 255, 173),(238, 244, 21),(220, 126, 181),(29, 170, 255),(133, 142, 146)]
 
 # Load the BOVW codebook
 pickle_in = open(BOVW,"rb")
 dictionary = pickle.load(pickle_in)
 
 # Initialize SIFT BOW image descriptor extractor
-sift2 = cv2.xfeatures2d.SIFT_create()
-bowDiction = cv2.BOWImgDescriptorExtractor(sift2, cv2.BFMatcher(cv2.NORM_L2))
-bowDiction.setVocabulary(dictionary)
-
 def features(image):
   Humo=fd_hu_moments(image)
   Harl=fd_haralick(image)
@@ -137,8 +138,11 @@ kernel = cv2.getStructuringElement(cv2.MORPH_RECT,(ks,ks))
 thresh = cv2.dilate(thresh, kernel)
 cv2.imwrite('dilated_edge.png',thresh)
 
-# Find all contours of binary image
-_ , contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+# Find all contours of binary image (OpenCV 3 and 4+ compatible)
+contour_result = cv2.findContours(
+    thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+)
+contours = contour_result[0] if len(contour_result) == 2 else contour_result[1]
 
 # Number of contours
 num_contours=len(contours)
@@ -196,7 +200,7 @@ for cnt in contours:
     
     # Draw bounding rectangle
     box = cv2.boxPoints(rect)
-    box = np.int0(box)
+    box = box.astype(np.int32)
     cv2.drawContours(img,[box],0,colours[cluster[num_cnt]],2)
 
     # Set label colour and position
