@@ -15,18 +15,7 @@ data/
 data_filtered/
 my_test_images/
 
-# --- Large Binary Model Files & Training Feature Arrays ---
-# Large numpy array caches and model checkpoints
-*.npy
-*.npz
-model/*.npy
-model/*.npz
-model/*.sav
-model/*.joblib
-model/*.pickle
-model/*.pkl
-model/*.h5
-model/*.onnx
+
 
 # --- Intermediate OpenCV Image Dumps & Processing Outputs ---
 binary_edge.png
